@@ -367,6 +367,11 @@ void sylvan_gc_go(int master)
         }
     }
 
+    // phase 2b: count
+    size_t filled, total;
+    sylvan_table_usage(&filled, &total);
+    if (filled > total/2) llmsset_sizeup(nodes);
+
     // phase 3: rehash
     barrier_wait(&gcbar);
 
@@ -449,7 +454,8 @@ sylvan_init(size_t tablesize, size_t cachesize, int _granularity)
         exit(1);
     }
 
-    nodes = llmsset_create(1LL<<tablesize);
+    if (tablesize < 20) tablesize = 20;
+    nodes = llmsset_create(1LL<<20, 1LL<<tablesize);
     cache_create(1LL<<cachesize);
     refs_create(1024);
 

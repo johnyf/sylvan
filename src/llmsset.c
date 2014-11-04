@@ -41,7 +41,7 @@
 #define MASK_INDEX ((uint64_t)0x000000ffffffffff)
 #define MASK_HASH  ((uint64_t)0x3fffff0000000000)
 
-static const uint8_t  HASH_PER_CL = ((LINE_SIZE) / 8);
+//static const uint8_t  HASH_PER_CL = ((LINE_SIZE) / 8);
 static const uint64_t CL_MASK     = ~(((LINE_SIZE) / 8) - 1);
 static const uint64_t CL_MASK_R   = ((LINE_SIZE) / 8) - 1;
 
@@ -193,7 +193,7 @@ llmsset_rehash_bucket(const llmsset_t dbs, uint64_t d_idx)
 }
 
 llmsset_t
-llmsset_create(size_t table_size)
+llmsset_create(size_t initial_size, size_t max_size)
 {
     llmsset_t dbs;
     if (posix_memalign((void**)&dbs, LINE_SIZE, sizeof(struct llmsset)) != 0) {
@@ -201,18 +201,36 @@ llmsset_create(size_t table_size)
         exit(1);
     }
 
-    if (table_size < HASH_PER_CL) table_size = HASH_PER_CL;
-    dbs->table_size = table_size;
+    // TODO: check table_size, max_size for power of 2
+
+    //if (dbs->ini < HASH_PER_CL) table_size = HASH_PER_CL;
+    dbs->table_size = initial_size;
+    dbs->max_size = max_size;
     dbs->mask = dbs->table_size - 1;
 
-    dbs->threshold = (64 - __builtin_clzl(table_size)) + 4; // doubling table_size increases threshold by 1
+    dbs->threshold = (64 - __builtin_clzl(dbs->table_size)) + 4; // doubling table_size increases threshold by 1
 
-    dbs->table = (uint64_t*)mmap(0, dbs->table_size * sizeof(uint64_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, 0, 0);
+    dbs->table = (uint64_t*)mmap(0, dbs->max_size * sizeof(uint64_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, 0, 0);
+    //dbs->table = (uint64_t*)mmap(0, dbs->table_size * sizeof(uint64_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, 0, 0);
     if (dbs->table == (uint64_t*)-1) { fprintf(stderr, "Unable to allocate memory!"); exit(1); }
     dbs->data = (uint8_t*)mmap(0, dbs->table_size * LLMSSET_LEN, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, 0, 0);
     if (dbs->data == (uint8_t*)-1) { fprintf(stderr, "Unable to allocate memory!"); exit(1); }
 
     return dbs;
+}
+
+int
+llmsset_sizeup(llmsset_t dbs)
+{
+    if (dbs->table_size >= dbs->max_size) return 0;
+    dbs->table_size <<= 1;
+    dbs->mask = dbs->table_size - 1;
+    dbs->threshold++;
+    printf("up\n");
+    // DO NOT FORGET TO REHASH
+
+    // mremap(dbs->table, dbs->old_size * sizeof(uint64_t), dbs->table_size * sizeof(uint64_t), MREMAP_MAYMOVE);
+    return 1;
 }
 
 void

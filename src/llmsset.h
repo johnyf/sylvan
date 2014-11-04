@@ -22,6 +22,7 @@ typedef struct llmsset
     uint64_t          *table;       // table with hashes
     uint8_t           *data;        // table with values
     size_t            table_size;   // size of the hash table (number of slots) --> power of 2!
+    size_t            max_size;     // maximum size of the hash table (power of 2)
     size_t            mask;         // size-1
     size_t            f_size;
     int16_t           threshold;    // number of iterations for insertion until returning error
@@ -51,7 +52,8 @@ llmsset_ptr_to_index(const llmsset_t dbs, void* ptr)
 /**
  * Create and free a lockless MS set
  */
-llmsset_t llmsset_create(size_t table_size);
+llmsset_t llmsset_create(size_t initial_size, size_t max_size);
+int llmsset_sizeup();
 void llmsset_free(llmsset_t dbs);
 
 /**

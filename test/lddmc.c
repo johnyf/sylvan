@@ -16,7 +16,7 @@
 /* Configuration */
 static int report_levels = 0; // report states at start of every level
 static int report_table = 0; // report table size at end of every level
-static int strategy = 1; // set to 1 = use PAR strategy; set to 0 = use BFS strategy
+static int strategy = 1; // set to 2 = use SAT strategy; 1 = use PAR strategy; set to 0 = use BFS strategy
 static int check_deadlocks = 0; // set to 1 to check for deadlocks
 static int print_transition_matrix = 1; // print transition relation matrix
 static int workers = 0; // autodetect
@@ -97,6 +97,7 @@ typedef struct relation
 static size_t vector_size; // size of vector
 static int next_count; // number of partitions of the transition relation
 static rel_t *next; // each partition of the transition relation
+static int *first; // vector variable of first variable of transition relation
 
 #define Abort(...) { fprintf(stderr, __VA_ARGS__); exit(-1); }
 
@@ -201,6 +202,14 @@ get_first(MDD meta)
     uint32_t val = lddmc_value(meta);
     if (val != 0) return 0;
     return 1+get_first(lddmc_follow(meta, val));
+}
+
+static MDD __attribute__((unused))
+skip_to_first(MDD meta)
+{
+    uint32_t val = lddmc_value(meta);
+    if (val != 0) return meta;
+    return skip_to_first(lddmc_follow(meta, val));
 }
 
 /* Straight-forward implementation of parallel reduction */
@@ -377,6 +386,68 @@ VOID_TASK_1(bfs, set_t, set)
     set->mdd = visited;
 }
 
+#define lddmc_ref(s) s
+#define lddmc_deref(s)
+
+int last_group = -1;
+
+/* Saturation strategy */
+TASK_2(MDD, sat_step, MDD, sub, int, group)
+{
+    if (sub == lddmc_false) return lddmc_false;
+    if (sub == lddmc_true) return lddmc_true;
+
+    //lddmc_ref(sub);
+    MDD old = lddmc_false;
+    while (old != sub) {
+        //lddmc_deref(old);
+        old = lddmc_ref(sub);
+
+        // First saturate next
+        if (group+1 < next_count) {
+            MDD res;
+            if (first[group+1]!=first[group]) res = lddmc_ref(lddmc_compose(sub, (lddmc_compose_cb)TASK(sat_step), (void*)(size_t)(group+1), first[group+1]-first[group]));
+            else res = CALL(sat_step, sub, group+1);
+            if (sub != res) {
+                //lddmc_deref(sub);
+                sub = res;
+            }
+        }
+
+        // Next, run one of our own
+        // printf("relprod %d!\n", group);
+        MDD old2 = lddmc_false;
+        while (old2 != sub) {
+            old2 = sub;
+        MDD succ = lddmc_ref(lddmc_relprod(sub, next[group]->mdd, next[group]->meta));
+        MDD res = lddmc_ref(lddmc_union(sub, succ));
+        //lddmc_deref(sub);
+        //lddmc_deref(succ);
+        sub = res;
+        }
+
+        if (report_levels && group < 8) {
+            printf("Group %d, %zu states...", group, (size_t)lddmc_satcount_cached(sub));
+        }
+
+        if (report_table && group < 8) {
+            size_t filled, total;
+            lddmc_table_usage(&filled, &total);
+            printf("done, table: %0.1f%% full (%zu nodes).\n", 100.0*(double)filled/total, filled);
+        } else if (group<8) {
+            printf("done\n");
+        }
+    }
+    return sub;
+}
+
+VOID_TASK_1(sat, set_t, set)
+{
+    MDD res = lddmc_compose(set->mdd, (lddmc_compose_cb)TASK(sat_step), 0, first[0]);
+    lddmc_deref(set->mdd);
+    set->mdd = lddmc_ref(res);
+}
+
 /* Obtain current wallclock time */
 static double
 wctime()
@@ -433,6 +504,23 @@ main(int argc, char **argv)
     fclose(f);
     printf("done.\n");
 
+    // Order transitions using gnome sort
+    first = (int*)malloc(sizeof(int) * next_count);
+    for (i=0;i<next_count;i++) first[i] = get_first(next[i]->meta);
+
+    for (i=0;i<next_count;) {
+        if (i == 0 || first[i-1] <= first[i]) i++;
+        else {
+            int tmp = first[i];
+            rel_t r_tmp = next[i];
+            first[i] = first[i-1];
+            next[i] = next[i-1];
+            i--;
+            first[i] = tmp;
+            next[i] = r_tmp;
+        }
+    }
+
     // Report statistics
     printf("Read file '%s'\n", argv[1]);
     printf("%zu integers per state, %d transition groups\n", vector_size, next_count);
@@ -457,7 +545,15 @@ main(int argc, char **argv)
 #ifdef HAVE_PROFILER
     if (profile_filename != NULL) ProfilerStart(profile_filename);
 #endif
-    if (strategy == 1) {
+    if (strategy == 2) {
+        // Skip meta
+        for (i=0; i<next_count; i++) next[i]->meta = skip_to_first(next[i]->meta);
+
+        double t1 = wctime();
+        CALL(sat, states);
+        double t2 = wctime();
+        printf("SAT Time: %f\n", t2-t1);
+    } else if (strategy == 1) {
         double t1 = wctime();
         CALL(par, states);
         double t2 = wctime();

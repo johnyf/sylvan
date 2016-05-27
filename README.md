@@ -6,8 +6,8 @@ Sylvan is developed (&copy; 2011-2016) by the [Formal Methods and Tools](http://
 
 You can contact the main author of Sylvan at <t.vandijk@utwente.nl>. Please let us know if you use Sylvan in your projects.
 
-Sylvan is available at: https://github.com/utwente-fmt/sylvan  
-Java/JNI bindings: https://github.com/trolando/jsylvan  
+Sylvan is available at: https://github.com/utwente-fmt/sylvan
+Java/JNI bindings: https://github.com/trolando/jsylvan
 Haskell bindings: https://github.com/adamwalker/sylvan-haskell
 
 Publications
@@ -16,9 +16,29 @@ T. van Dijk and J. van de Pol (2015) [Sylvan: Multi-core Decision Diagrams](http
 
 T. van Dijk and A.W. Laarman and J. van de Pol (2012) [Multi-Core BDD Operations for Symbolic Reachability](http://eprints.eemcs.utwente.nl/22166/). In: PDMC 2012, ENTCS. Elsevier.
 
+Installation
+------------
+
+The [GNU autotools](https://en.wikipedia.org/wiki/GNU_Build_System) are used to build the system.
+Assuming that the autotools are installed on your system and available in your `$PATH`, install with:
+
+```shell
+aclocal
+libtoolize
+autoheader  # can ignore the error about `AC_CONFIG_HEADERS`
+autoconf
+automake --add-missing
+./configure  --prefix=/installation/path  # prefix is optional
+make
+make install
+```
+
+If you prefer to link to the generated libraries without installing them,
+they can be found under `src/.libs`.
+
 Usage
 -----
-Simple examples can be found in the `examples` subdirectory. The file `simple.cpp` contains a toy program that 
+Simple examples can be found in the `examples` subdirectory. The file `simple.cpp` contains a toy program that
 uses the C++ objects to perform basic BDD manipulation.
 The `mc.c` and `lddmc.c` programs are more advanced examples of symbolic model checking (with example models in the `models` subdirectory).
 
@@ -67,10 +87,10 @@ The following 'primitives' are implemented:
 
 See `src/sylvan_bdd.h`, `src/sylvan_mtbdd.h` and `src/sylvan_ldd.h` for other implemented operations.
 See `src/sylvan_obj.hpp` for the C++ interface.
- 
+
 ### Garbage collection
 
-Garbage collection is triggered when trying to insert a new node and no new bucket can be found within a reasonable upper bound. 
+Garbage collection is triggered when trying to insert a new node and no new bucket can be found within a reasonable upper bound.
 Garbage collection is stop-the-world and all workers must cooperate on garbage collection. (Beware of deadlocks if you use Sylvan operations in critical sections!)
 - `sylvan_gc()`: manually trigger garbage collection.
 - `sylvan_gc_enable()`: enable garbage collection.
